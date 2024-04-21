@@ -114,7 +114,7 @@ try:
             
             while True:
                 overlay.draw_textbox("Scanning, press BtnRst to exit", 120, 62, padding=8, shadow=True, extended_border=True)
-                rx.record()  # listens at IR_RX_PIN for signals
+                rx.record(wait_ms=2000)  # listens at IR_RX_PIN for signals
                 if rx.get_mode() == UpyIrRx.MODE_DONE_OK:
                     scan_name = overlay.text_entry(title="Enter signal name", blackout_bg=True)
                     if scan_name == '':  # exit to main menu if empty name
@@ -139,5 +139,3 @@ except Exception as e:  # for debugging
     overlay.popup(str(e))
     print(e)
     soft_reset()
-
-
