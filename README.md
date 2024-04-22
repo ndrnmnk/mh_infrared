@@ -10,3 +10,5 @@ Warning: Everything here is in beta, if you got any bugs - welcome to Issues tab
 This code can open .ir files, which you can get by exporting [Mi Remote Database](https://github.com/ysard/mi_remote_database) in Flipper format, and saving it in /sd/ir
 
 Also, UpyIrRx.py and UpyIrTx.py are stolen from [here](https://github.com/meloncookie/RemotePy)
+
+Would be easier to develop, if russians weren't bombing our power plants. [Help Ukraine](https://u24.gov.ua/)
