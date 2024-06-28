@@ -5,8 +5,8 @@ import uos
 
 # trying to import libraries
 try:
-    from UpyIrTx import UpyIrTx
-    from UpyIrRx import UpyIrRx
+    from .UpyIrTx import UpyIrTx
+    from .UpyIrRx import UpyIrRx
 except:
     try:
         from apps.IR.UpyIrTx import UpyIrTx
@@ -17,6 +17,7 @@ except:
             from sd.apps.IR.UpyIrRx import UpyIrRx
         except:
             print("Could not import libraries")
+            soft_reset
 
 # os.path.isdir() doesn't work, so using this
 def is_dir(dir_path):
@@ -40,7 +41,7 @@ def load_ir_signals(filename):
                 del current_signal
     file.close()
     return ir_signals
-   
+    
 #saving
 def save_scanned_signal(filename, signal_name, data):
     with open(f"/sd/ir/scanned/{filename}.ir", 'a')as file:
@@ -54,25 +55,17 @@ def save_scanned_signal(filename, signal_name, data):
         del temp
         file.write(f"\n#\nname: {signal_name}\ntype: raw\nfrequency: 38200\nduty_cycle: 0.330000\ndata: {data_str}")
 
+# init display
+spi = SPI(1, baudrate=40000000, sck=Pin(36), mosi=Pin(35), miso=None)
+tft = st7789py.ST7789(spi, 135, 240, reset=Pin(33, Pin.OUT), cs=Pin(37, Pin.OUT), dc=Pin(34, Pin.OUT), backlight=Pin(38, Pin.OUT), rotation=1, color_order=st7789py.BGR)
+kb = keyboard.KeyBoard()
+config = mhconfig.Config()
+overlay = mhoverlay.UI_Overlay(config=config, keyboard=kb, display_py=tft)
+
 try:
     # mount SD, init hardware and variables
-    sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
-    uos.mount(sd, '/sd')
-    spi = SPI(1, baudrate=40000000, sck=Pin(36), mosi=Pin(35), miso=None)
-    tft = st7789py.ST7789(
-        spi,
-        135,
-        240,
-        reset=Pin(33, Pin.OUT),
-        cs=Pin(37, Pin.OUT),
-        dc=Pin(34, Pin.OUT),
-        backlight=Pin(38, Pin.OUT),
-        rotation=1,
-        color_order=st7789py.BGR
-    )
-    kb = keyboard.KeyBoard()
-    config = mhconfig.Config()
-    overlay = mhoverlay.UI_Overlay(config=config, keyboard=kb, display_py=tft)
+    #sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
+    #uos.mount(sd, '/sd')
     PIN_IR_LED = 44
     ir_led = Pin(PIN_IR_LED, Pin.OUT)
     tx = UpyIrTx(0, PIN_IR_LED)
@@ -94,7 +87,8 @@ try:
             elif selected_path.endswith('.ir'):
                 loaded_ir_signals = load_ir_signals(f"{directory_path}/{selected_path}")  # loads signals
                 while True:
-                    sig_name = overlay.popup_options_2d(sorted(loaded_ir_signals), extended_border=True, scrollable=True)  # asks user which signal to send
+                    sig_name = overlay.popup_options(sorted(loaded_ir_signals), extended_border=True)  # asks user which signal to send
+                    # sig_name = overlay.popup_options_2d(sorted(loaded_ir_signals), extended_border=True, scrollable=True) # uses popup_options_2d, useful for .ir with more than 6 signals
                     if sig_name is None: # if user presses ESC, exit to main menu
                         break
                     
