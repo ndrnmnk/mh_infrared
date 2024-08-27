@@ -1,7 +1,8 @@
-from lib import keyboard, st7789py, mhconfig, mhoverlay
-from machine import Pin, PWM, SPI, soft_reset, SDCard
+from lib import display, userinput
+from lib.hydra import config, popup
+from machine import Pin, soft_reset, SDCard
 from time import sleep
-import uos
+import os
 
 # trying to import libraries
 try:
@@ -12,20 +13,22 @@ except:
         from apps.IR.UpyIrTx import UpyIrTx
         from apps.IR.UpyIrRx import UpyIrRx
     except:
-        try:
-            from sd.apps.IR.UpyIrTx import UpyIrTx
-            from sd.apps.IR.UpyIrRx import UpyIrRx
-        except:
-            print("Could not import libraries")
-            soft_reset
+        from sd.apps.IR.UpyIrTx import UpyIrTx
+        from sd.apps.IR.UpyIrRx import UpyIrRx
+
 
 # os.path.isdir() doesn't work, so using this
 def is_dir(dir_path):
     try:
-        uos.chdir(dir_path)
+        os.chdir(dir_path)
         return True
     except:
         return False
+
+# splits list for correct displaying
+def split_list(lst, chunk_size=8):
+    print(len(lst))
+    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 # reads signals from .ir to json
 def load_ir_signals(filename):
@@ -56,38 +59,40 @@ def save_scanned_signal(filename, signal_name, data):
         file.write(f"\n#\nname: {signal_name}\ntype: raw\nfrequency: 38200\nduty_cycle: 0.330000\ndata: {data_str}")
 
 # init display
-spi = SPI(1, baudrate=40000000, sck=Pin(36), mosi=Pin(35), miso=None)
-tft = st7789py.ST7789(spi, 135, 240, reset=Pin(33, Pin.OUT), cs=Pin(37, Pin.OUT), dc=Pin(34, Pin.OUT), backlight=Pin(38, Pin.OUT), rotation=1, color_order=st7789py.BGR)
-kb = keyboard.KeyBoard()
-config = mhconfig.Config()
-overlay = mhoverlay.UI_Overlay(config=config, keyboard=kb, display_py=tft)
+DISPLAY = display.Display()
+CONFIG = config.Config()
+INPUT = userinput.UserInput()
+overlay = popup.UIOverlay()
 
 try:
     # mount SD, init hardware and variables
-    #sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
-    #uos.mount(sd, '/sd')
+    sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
+    os.mount(sd, '/sd')
     PIN_IR_LED = 44
     ir_led = Pin(PIN_IR_LED, Pin.OUT)
     tx = UpyIrTx(0, PIN_IR_LED)
     led_status = 0
     directory_path = "/sd/ir"
     if not is_dir(directory_path):
-        uos.mkdir(directory_path)
+        os.mkdir(directory_path)
 
     while True:  # main loop
         # main menu
-        user_choice = overlay.popup_options(["Load file", "Scan remote", "IR On", "IR Off", "Exit"], title=f"IR state: {led_status}", shadow=True, extended_border=True)
+        DISPLAY.fill(CONFIG.palette[2])
+        user_choice = overlay.popup_options(["Load file", "Scan remote", "IR On", "IR Off", "Exit"], title=f"IR state: {led_status}")
 
         if user_choice == "Load file":
-            selected_path = overlay.popup_options(uos.listdir(directory_path))  # ls
+            DISPLAY.fill(CONFIG.palette[2])
+            selected_path = overlay.popup_options(split_list(os.listdir(directory_path)))  # ls
             if selected_path is None: #  if user presses ESC, return to previous dir
                 directory_path = "/".join(list(dir_path.split('/')[0:-1]))
             elif is_dir(f"{directory_path}/{selected_path}"):  # if user tries to open a directory, enter it
                 directory_path = directory_path + '/' + selected_path
             elif selected_path.endswith('.ir'):
+                DISPLAY.fill(CONFIG.palette[2])
                 loaded_ir_signals = load_ir_signals(f"{directory_path}/{selected_path}")  # loads signals
                 while True:
-                    sig_name = overlay.popup_options(sorted(loaded_ir_signals), extended_border=True)  # asks user which signal to send
+                    sig_name = overlay.popup_options(split_list(sorted(loaded_ir_signals)))  # asks user which signal to send
                     if sig_name is None: # if user presses ESC, exit to main menu
                         break
                     
@@ -100,18 +105,24 @@ try:
                 overlay.popup("Only .ir can be opened here")
 
         elif user_choice == "Scan remote":
+            DISPLAY.fill(CONFIG.palette[2])
             overlay.popup("Connent IR reciever module to groove. Press enter when ready")
-            IR_RX_PIN = overlay.popup_options(['1', '2'], title="Select pin", extended_border=True)
+            DISPLAY.fill(CONFIG.palette[2])
+            IR_RX_PIN = overlay.popup_options(['1', '2'], title="Select pin")
             rx = UpyIrRx(Pin(int(IR_RX_PIN), Pin.IN))
-            scan_filename = overlay.text_entry(title="Filename to write", blackout_bg=True)
+            DISPLAY.fill(CONFIG.palette[2])
+            scan_filename = overlay.text_entry(title="Filename to write")
             
             while True:
-                overlay.draw_textbox("Scanning, press BtnRst to exit", 120, 62, padding=8, shadow=True, extended_border=True)
+                overlay.draw_textbox("Scanning, press BtnRst to exit", 120, 62, padding=8)
+                DISPLAY.show()
                 rx.record(wait_ms=2000)  # listens at IR_RX_PIN for signals
                 if rx.get_mode() == UpyIrRx.MODE_DONE_OK:
-                    scan_name = overlay.text_entry(title="Enter signal name", blackout_bg=True)
+                    DISPLAY.fill(CONFIG.palette[2])
+                    scan_name = overlay.text_entry(title="Enter signal name")
                     if scan_name == '':  # exit to main menu if empty name
                         break
+                    DISPLAY.fill(CONFIG.palette[2])
                     signal_list = rx.get_record_list()  # get data of signal
                     save_scanned_signal(scan_filename, scan_name, signal_list)
             
@@ -129,6 +140,7 @@ try:
         sleep(0.1)
 
 except Exception as e:  # for debugging
-    overlay.popup(str(e))
-    print(e)
-    soft_reset()
+    overlay.error(str(e))
+    raise # error will be logged in `log.txt`
+
+
