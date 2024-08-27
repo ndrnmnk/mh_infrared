@@ -1,8 +1,8 @@
 from lib import display, userinput
 from lib.hydra import config, popup
-from machine import Pin, PWM, SPI, soft_reset, SDCard
+from machine import Pin, soft_reset, SDCard
 from time import sleep
-import uos
+import os
 
 # trying to import libraries
 try:
@@ -13,17 +13,14 @@ except:
         from apps.IR.UpyIrTx import UpyIrTx
         from apps.IR.UpyIrRx import UpyIrRx
     except:
-        try:
-            from sd.apps.IR.UpyIrTx import UpyIrTx
-            from sd.apps.IR.UpyIrRx import UpyIrRx
-        except:
-            print("Could not import libraries")
-            soft_reset
+        from sd.apps.IR.UpyIrTx import UpyIrTx
+        from sd.apps.IR.UpyIrRx import UpyIrRx
+
 
 # os.path.isdir() doesn't work, so using this
 def is_dir(dir_path):
     try:
-        uos.chdir(dir_path)
+        os.chdir(dir_path)
         return True
     except:
         return False
@@ -70,14 +67,14 @@ overlay = popup.UIOverlay()
 try:
     # mount SD, init hardware and variables
     sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
-    uos.mount(sd, '/sd')
+    os.mount(sd, '/sd')
     PIN_IR_LED = 44
     ir_led = Pin(PIN_IR_LED, Pin.OUT)
     tx = UpyIrTx(0, PIN_IR_LED)
     led_status = 0
     directory_path = "/sd/ir"
     if not is_dir(directory_path):
-        uos.mkdir(directory_path)
+        os.mkdir(directory_path)
 
     while True:  # main loop
         # main menu
@@ -86,7 +83,7 @@ try:
 
         if user_choice == "Load file":
             DISPLAY.fill(CONFIG.palette[2])
-            selected_path = overlay.popup_options(split_list(uos.listdir(directory_path)))  # ls
+            selected_path = overlay.popup_options(split_list(os.listdir(directory_path)))  # ls
             if selected_path is None: #  if user presses ESC, return to previous dir
                 directory_path = "/".join(list(dir_path.split('/')[0:-1]))
             elif is_dir(f"{directory_path}/{selected_path}"):  # if user tries to open a directory, enter it
@@ -118,6 +115,7 @@ try:
             
             while True:
                 overlay.draw_textbox("Scanning, press BtnRst to exit", 120, 62, padding=8)
+                DISPLAY.show()
                 rx.record(wait_ms=2000)  # listens at IR_RX_PIN for signals
                 if rx.get_mode() == UpyIrRx.MODE_DONE_OK:
                     DISPLAY.fill(CONFIG.palette[2])
@@ -142,7 +140,7 @@ try:
         sleep(0.1)
 
 except Exception as e:  # for debugging
-    overlay.popup(str(e))
-    print(e)
-    soft_reset()
+    overlay.error(str(e))
+    raise # error will be logged in `log.txt`
+
 
