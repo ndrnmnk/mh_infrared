@@ -8,13 +8,16 @@ import os
 try:
     from .UpyIrTx import UpyIrTx
     from .UpyIrRx import UpyIrRx
+    have_to_mount_sd = True
 except:
     try:
         from apps.IR.UpyIrTx import UpyIrTx
         from apps.IR.UpyIrRx import UpyIrRx
+        have_to_mount_sd = True
     except:
         from sd.apps.IR.UpyIrTx import UpyIrTx
         from sd.apps.IR.UpyIrRx import UpyIrRx
+        have_to_mount_sd = False
 
 
 # os.path.isdir() doesn't work, so using this
@@ -26,9 +29,29 @@ def is_dir(dir_path):
         return False
 
 # splits list for correct displaying
-def split_list(lst, chunk_size=8):
-    print(len(lst))
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+def split_list(lst, chunk_size=8, page=0, columns=4):
+    result = []
+    # Calculate how many items to skip based on the page number
+    skip_items = page * (columns * chunk_size - 2)
+    # Adjust the list by skipping the first 'skip_items'
+    lst = lst[skip_items:]
+    if not lst:
+        return ["prev_page"]
+    # Handle the first list with ["next_page", "prev_page"]
+    first_chunk = ["next_page", "prev_page"]
+    first_chunk.extend(lst[:chunk_size - 2])
+    # Only add the first list if it's not empty (i.e., it has more than just ["next_page", "prev_page"])
+    if len(first_chunk) > 2:
+        result.append(first_chunk)
+    # Handle the next 4 lists of chunk_size
+    for i in range(1, columns):
+        start_index = (i - 1) * chunk_size - 2 + chunk_size
+        chunk = lst[start_index:start_index + chunk_size]
+        # Only add non-empty chunks
+        if chunk:
+            result.append(chunk)
+    return result
+
 
 # reads signals from .ir to json
 def load_ir_signals(filename):
@@ -66,40 +89,59 @@ overlay = popup.UIOverlay()
 
 try:
     # mount SD, init hardware and variables
-    sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
-    os.mount(sd, '/sd')
-    PIN_IR_LED = 44
-    ir_led = Pin(PIN_IR_LED, Pin.OUT)
-    tx = UpyIrTx(0, PIN_IR_LED)
-    led_status = 0
-    directory_path = "/sd/ir"
+    if have_to_mount_sd:
+        try:
+            sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
+            os.mount(sd, '/sd')
+        except:
+            print("could not mount sd")
+    tx = UpyIrTx(0, 44)
+    page = 0
+    directory_path = "/"
     if not is_dir(directory_path):
         os.mkdir(directory_path)
 
     while True:  # main loop
         # main menu
         DISPLAY.fill(CONFIG.palette[2])
-        user_choice = overlay.popup_options(["Load file", "Scan remote", "IR On", "IR Off", "Exit"], title=f"IR state: {led_status}")
+        user_choice = overlay.popup_options(["Load file", "Scan remote", "Exit"], title=f"InfraRed")
 
         if user_choice == "Load file":
             DISPLAY.fill(CONFIG.palette[2])
-            selected_path = overlay.popup_options(split_list(os.listdir(directory_path)))  # ls
+            selected_path = overlay.popup_options(split_list(lst = os.listdir(directory_path) + [".."], page=page, columns=2))  # ls
             if selected_path is None: #  if user presses ESC, return to previous dir
-                directory_path = "/".join(list(dir_path.split('/')[0:-1]))
+                directory_path = "/".join(list(directory_path.split('/')[0:-1]))
+            elif selected_path == "next_page":
+                page += 1
+                # implement later
+            elif selected_path == "prev_page":
+                if page > 0:
+                    page -= 1
+                # implement later
             elif is_dir(f"{directory_path}/{selected_path}"):  # if user tries to open a directory, enter it
                 directory_path = directory_path + '/' + selected_path
+                page = 0
+            
             elif selected_path.endswith('.ir'):
+                page = 0
                 DISPLAY.fill(CONFIG.palette[2])
                 loaded_ir_signals = load_ir_signals(f"{directory_path}/{selected_path}")  # loads signals
                 while True:
-                    sig_name = overlay.popup_options(split_list(sorted(loaded_ir_signals)))  # asks user which signal to send
+                    DISPLAY.fill(CONFIG.palette[2])
+                    sig_name = overlay.popup_options(split_list(sorted(loaded_ir_signals), page=page, columns=4))  # asks user which signal to send
                     if sig_name is None: # if user presses ESC, exit to main menu
                         break
-                    
-                    signal = loaded_ir_signals.get(sig_name)  # find a data from a signal and send it
-                    if signal:
-                        tx.send_raw(signal['data'])
+                    elif sig_name == "next_page":
+                        page += 1
+                    elif sig_name == "prev_page":
+                        if page > 0:
+                            page -= 1
+                    else:
+                        signal = loaded_ir_signals.get(sig_name)  # find a data from a signal and send it
+                        if signal:
+                            tx.send_raw(signal['data'])
                 del loaded_ir_signals, sig_name  # cleanup
+                page = 0
 
             else:
                 overlay.popup("Only .ir can be opened here")
@@ -128,19 +170,11 @@ try:
             
             del rx, IR_RX_PIN, scan_filename, scan_name, signal_list  # cleanup
                 
-        elif user_choice == "IR On":
-            led_status = 1
-        elif user_choice == "IR Off":
-            led_status = 0
         elif user_choice == "Exit":
-            ir_led.value(0)
             soft_reset()
-
-        ir_led.value(led_status)
+        
         sleep(0.1)
 
 except Exception as e:  # for debugging
     overlay.error(str(e))
     raise # error will be logged in `log.txt`
-
-
