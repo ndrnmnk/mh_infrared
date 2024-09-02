@@ -1,32 +1,44 @@
-from lib import display, userinput
+from lib import display, userinput, sdcard
 from lib.hydra import config, popup
-from machine import Pin, soft_reset, SDCard
+from machine import Pin, soft_reset
 from time import sleep
 import os
-
-# trying to import libraries
-try:
-    from .UpyIrTx import UpyIrTx
-    from .UpyIrRx import UpyIrRx
-    have_to_mount_sd = True
-except:
-    try:
-        from apps.IR.UpyIrTx import UpyIrTx
-        from apps.IR.UpyIrRx import UpyIrRx
-        have_to_mount_sd = True
-    except:
-        from sd.apps.IR.UpyIrTx import UpyIrTx
-        from sd.apps.IR.UpyIrRx import UpyIrRx
-        have_to_mount_sd = False
-
 
 # os.path.isdir() doesn't work, so using this
 def is_dir(dir_path):
     try:
-        os.chdir(dir_path)
+        os.listdir(dir_path)
+        # print(f"{dir_path} is directory")
         return True
     except:
+        # print(f"{dir_path} is a file/doesnt exist")
         return False
+
+try:
+    if not is_dir("/sd"):
+        sdc = sdcard.SDCard()
+        sdc.mount()
+        mounted_sd = True
+    else:
+        mounted_sd = True
+except:
+    mounted_sd = False
+    print("could not mount sd")
+    
+# trying to import libraries
+try:
+    from .UpyIrTx import UpyIrTx
+    from .UpyIrRx import UpyIrRx
+except:
+    try:
+        from apps.IR.UpyIrTx import UpyIrTx
+        from apps.IR.UpyIrRx import UpyIrRx
+    except:
+        if mounted_sd:
+            from sd.apps.IR.UpyIrTx import UpyIrTx
+            from sd.apps.IR.UpyIrRx import UpyIrRx
+        else:
+            raise
 
 # splits list for correct displaying
 def split_list(lst, chunk_size=8, page=0, columns=4):
@@ -88,16 +100,12 @@ INPUT = userinput.UserInput()
 overlay = popup.UIOverlay()
 
 try:
-    # mount SD, init hardware and variables
-    if have_to_mount_sd:
-        try:
-            sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
-            os.mount(sd, '/sd')
-        except:
-            print("could not mount sd")
     tx = UpyIrTx(0, 44)
     page = 0
-    directory_path = "/"
+    if mounted_sd:
+        directory_path = "/sd/ir"
+    else:
+        directory_path = "/ir"
     if not is_dir(directory_path):
         os.mkdir(directory_path)
 
