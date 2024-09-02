@@ -29,14 +29,18 @@ except:
 try:
     from .UpyIrTx import UpyIrTx
     from .UpyIrRx import UpyIrRx
+    from .NEC2RAW import convert
 except:
     try:
         from apps.IR.UpyIrTx import UpyIrTx
         from apps.IR.UpyIrRx import UpyIrRx
+        from apps.IR.NEC2RAW import convert
     except:
         if mounted_sd:
             from sd.apps.IR.UpyIrTx import UpyIrTx
             from sd.apps.IR.UpyIrRx import UpyIrRx
+            from apps.IR.NEC2RAW import convert
+            pass
         else:
             raise
 
@@ -73,6 +77,16 @@ def load_ir_signals(filename):
         for line in file:
             if line.startswith('name:'):
                 current_signal = {'name': line.split(':')[1].strip(), 'data': None}
+            elif line.startswith('address:'):
+                address = line.split(':')[1].strip()
+            elif line.startswith('command:'):
+                command = line.split(':')[1].strip()
+                converted_signal = convert(address, command)
+                print(converted_signal)
+                print()
+                current_signal['data'] = converted_signal
+                ir_signals[current_signal['name']] = current_signal
+                del current_signal, address, command
             elif line.startswith('data:'):
                 current_signal['data'] = [int(x) for x in line.split(':')[1].strip().split()]
                 ir_signals[current_signal['name']] = current_signal
@@ -100,6 +114,7 @@ def send_signals(signals_path):
     page = 0
     DISPLAY.fill(CONFIG.palette[2])
     loaded_ir_signals = load_ir_signals(signals_path)  # loads signals
+    
     while True:
         DISPLAY.fill(CONFIG.palette[2])
         sig_name = overlay.popup_options(split_list(sorted(loaded_ir_signals), page=page, columns=4))  # asks user which signal to send
@@ -144,9 +159,7 @@ try:
         if user_choice == "Load last":
             try:
                 with open("/sd/latest-ir.txt", "r") as file:
-                    print("opened")
                     last_signals_path = file.read()
-                    print(last_signals_path)
                 send_signals(last_signals_path)
             except:
                 user_choice == "Load file"
